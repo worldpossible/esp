@@ -64,20 +64,18 @@
 <script src=" ../jquery.2.1.4.min.js"></script>
 <script>
 
-    var checkInterval = 1000; // polling delay (in ms) for connection check
-
     // requests a connection
     function connect(id) {
-        $("#constat-"+id).html("requesting (1)");
+        $("#constat-"+id).html("connecting... (1)");
         $.ajax({
             url: "stat.php?connect=1&id=" + id,
             success: function(response) {
-                $("#constat-"+response.id).html("requested (1)");
-                setTimeout("check('"+id+"')", checkInterval);
+                $("#constat-"+response.id).html("connecting... (2)");
+                //setTimeout("check('"+id+"')", checkInterval);
             },
             error: function(xhr) {
                 response = $.parseJSON(xhr);
-                $("#constat-").html("error (a)");
+                $("#constat-").html("connection error (1)");
             }
         });
         return false;
@@ -85,46 +83,25 @@
 
     // requests a disconnection
     function disconnect(id) {
-        $("#constat-"+id).html("dismissing (2)");
+        $("#constat-"+id).html("disconnecting... (1)");
         $.ajax({
             url: "stat.php?disconnect=1&id=" + id,
             success: function(response) {
-                $("#constat-"+response.id).html("dismissed (2)");
-                setTimeout("check('"+id+"')", checkInterval);
+                $("#constat-"+response.id).html("disconnecting... (2)");
+                //setTimeout("check('"+id+"')", checkInterval);
             },
             error: function(xhr) {
                 response = $.parseJSON(xhr);
-                $("#constat-"+response.id).html("error (b)");
+                $("#constat-"+response.id).html("disconnection error (1)");
             }
         });
         return false;
     }
 
-    // polls to see if a connection was made 
-    function check(id) {
-        $.ajax({
-            url: "stat.php?id=" + id,
-            success: function(response) {
-                $("#constat-"+response.id).html(response.state + " (3)");
-                if (response.state == "connected") {
-                    $("#info-"+response.id).show();
-                } else {
-                    $("#info-"+response.id).hide();
-                    if (response.state != "disconnected") {
-                        // in process... set it to check again
-                        setTimeout("check('"+id+"')", checkInterval);
-                    }
-                }
-            },
-            error: function(xhr) {
-                response = $.parseJSON(xhr);
-                $("#constat-"+response.id).html("error (c)");
-            }
-        });
-    }
-
+    var checkInterval = 2000; // polling delay (in ms) for connection check
     var hostname = window.location.hostname;
 
+    // get info on all devices
     function checkall() {
         $.ajax({
             url: "stat.php",
@@ -136,9 +113,13 @@
                 for (var i=0; i < arrayLength; ++i) {
 
                     var dev = response[i];
+                    if (dev.state == "connecting" || dev.state == "disconnecting") { dev.state += "... (3)"; }
+                    if (dev.is_stale) { devlink = dev.id; } else { 
+                        devlink = "<a href='#' onclick=\"connect('" + dev.id + "'); return false;\">" + dev.id + "</a>";
+                    }
                     $("#devices").append(
                         "<tr>" +
-                        "<td><a href='#' onclick=\"connect('" + dev.id + "'); return false;\">" + dev.id + "</a></td>" +
+                        "<td>" + devlink + "</a></td>" +
                         "<td>" + dev.last_seen_at + "</td>" +
                         "<td>" + dev.last_ip + "</td>" +
                         "<td id='constat-" + dev.id + "'>" + dev.state + "</td>" +
@@ -171,7 +152,7 @@
                 $("#msg").show();
             },
             complete: function() {
-                setTimeout(checkall, 2000);
+                setTimeout(checkall, checkInterval);
             },
         });
     }

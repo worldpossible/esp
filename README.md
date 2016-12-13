@@ -43,3 +43,11 @@ chsh esp
 
 You need to copy `/home/esp/.ssh/id_rsa` to `client/esp.sshkey` on any device
 that is going to connect. 
+
+You need to add the following to `/etc/sshd_config`:
+
+```
+    GatewayPorts yes
+    ClientAliveInterval 20
+    ClientAliveCountMax 3
+```

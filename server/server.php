@@ -54,7 +54,7 @@ if (!empty($_GET['connected'])) {
 
 # TODO these should be separate from the logic above - allow an update
 # and status check at once -- but you have to update checker.php as well
-} else if ($device['state'] == 'requested') {
+} else if ($device['state'] == 'connecting') {
 
     # an admin requested this device to connect, so we tell the device
     # to connect here -- providing a unique port number offset
@@ -67,7 +67,7 @@ if (!empty($_GET['connected'])) {
     echo "CONNECT " . $device['offset'];
     exit;
 
-} else if ($device['state'] == 'dismissed') {
+} else if ($device['state'] == 'disconnecting') {
 
     echo "DISCONNECT";
     exit;

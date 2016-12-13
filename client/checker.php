@@ -1,16 +1,5 @@
 <?php
 
-# this is the unit's ID. It must be unique. If two go
-# out with the same ID, then we won't be able to tell
-# them apart in the field, and may not be able to connect
-# to them at all if they're both online at the same time.
-$id   = "1";
-
-# for this reason, we append the last four of the MAC address.
-$id .= "-" . exec("ifconfig | grep eth0 | awk '{ print $5 }' | sed s/://g | grep -o '.\{4\}$'");
-
-echo "Device ID: $id\n";
-    
 # checker.php
 # 
 # This script checks in with the dev server, then polls it
@@ -18,6 +7,13 @@ echo "Device ID: $id\n";
 # connect, it creates ssh tunnels for our desired ports, and
 # then manages those processes.
 #
+
+# this is the unit's unique ID. We use the last six of the eth0 mac address
+$id = exec("ifconfig | grep eth0 | awk '{ print $5 }' | sed s/://g | grep -o '.\{6\}$'");
+
+define("DEBUG", false);
+
+if (DEBUG) { echo  "Device ID: $id\n"; }
 
 # these are the ports we want to tunnel
 $ports = array(
@@ -34,28 +30,36 @@ $findflag = "$name-findflag"; # for finding our procs
 
 # we use these as sensible limits for when the
 # server tells us to use a different interval
-$std_interval = 2; #60; # default polling rate, in seconds
-$min_interval = 2; #5;  # fastest allowed polling rate
-$max_interval = 60 * 60; # slowest allowed
+$std_interval =  20; # default polling rate, in seconds
+$min_interval =   5; # fast rate (while connected)
+$max_interval = 600; # slow rate (when offline)
 $interval = $std_interval;
 
 # check if there is already an ssh tunnel
-echo  "Startup check\n";
+if (DEBUG) { echo  "Startup check...\n"; }
 $pids = getpids();
 if ($pids) {
-    echo "Existing processes -- mark as conntected\n";
-    $response = file_get_contents( "$url?id=$id&connected=1" );
+    if (DEBUG) { echo "Existing processes -- mark as conntected\n"; }
+    $response = @file_get_contents( "$url?id=$id&connected=1" );
 } else {
-    echo "No existing processes -- mark as disconntected\n";
-    $response = file_get_contents( "$url?id=$id&disconnected=1" );
+    if (DEBUG) { echo "No existing processes -- mark as disconntected\n"; }
+    $response = @file_get_contents( "$url?id=$id&disconnected=1" );
 }
 
-# enter our loop
+# enter our infinite loop
 while (true) {
 
-    $response = file_get_contents( "$url?id=$id" );
+    $response = @file_get_contents( "$url?id=$id" );
 
-    echo "Server says: $response\n";
+    if ($response === false) {
+        if (DEBUG) { echo "Can't contact server -- waiting $max_interval seconds.\n"; }
+        # this probably means we're not online - the most common case, really.
+        # So we take a nice long break...
+        sleep($max_interval);
+        continue;
+    }
+
+    if (DEBUG) { echo "Server says: $response\n"; }
 
     if ($response == "OK") {
 
@@ -69,14 +73,18 @@ while (true) {
         # devices to back off under load
 
         $interval = $match[1];
-        if ($interval < $min_interval) {
-            $interval = $min_interval;
-        } else if ($interval > $max_interval) {
-            $interval = $max_interval;
+        # let's trust the server...
+        #if ($interval < $min_interval) {
+        #    $interval = $min_interval;
+        #} else if ($interval > $max_interval) {
+        #    $interval = $max_interval;
+        #}
+        # well, almost trust it...
+        if ($interval < 2) {
+            $interval = 2;
         }
-        echo "Polling interval set to: $interval\n";
+        if (DEBUG) { echo "Polling interval set to: $interval\n"; }
 
-#    } else if ($response == "CONNECT") {
     } else if (preg_match("/CONNECT (\d+)/", $response, $match)) {
 
         # This requests a connection -- we use the number provided
@@ -93,7 +101,7 @@ while (true) {
             # 1) specify the private key for login
             # 2) add a harmless string that will let us find the ssh process
             # 3) skip host checking
-            # 4) configure some thigns so that failed connections get closed
+            # 4) configure some things so that failed connections get closed
             # 5) run the actual revesre tunnel on the right port
             # 6) send all output to the dustbin so PHP can return
             $lport = $offset + $i++;
@@ -106,20 +114,19 @@ while (true) {
             );
             if ($retval > 0) {
                 $output = implode("\n", $output);
-                echo "Error: ($retval) - $output\n";
+                if (DEBUG) { echo "Error: ($retval) - $output\n"; }
                 $response = file_get_contents( "$url?id=$id&error=1" );
                 # XXX probably should bail here and kill off
                 # any tunnels that were successfully connected
             }
         }
 
-        echo "Waiting for tunnels to fork\n";
+        if (DEBUG) { echo "Waiting for tunnels to fork\n"; }
         $success = false;
         $retries = 0;
         $max_retries = 10;
         while (true) {
             $pids = getpids();
-            #echo "pids: " . count($pids) . ", ports: " . count($ports) . "\n";
             if (count($pids) == count($ports)) {
                 $success = true;
                 break;
@@ -131,10 +138,10 @@ while (true) {
         }
 
         if ($success) {
-            echo "Tunneling success\n";
+            if (DEBUG) { echo "Tunneling success\n"; }
             $response = file_get_contents( "$url?id=$id&connected=1" );
         } else {
-            echo "Tunneling failed\n";
+            if (DEBUG) { echo "Tunneling failed\n"; }
             $response = file_get_contents( "$url?id=$id&error=1" );
         }
 
@@ -152,8 +159,10 @@ while (true) {
         
     }
 
-# XXX we don't bother checking the pids for now -- until we get around
-# to writing the code to do something useful with lost connections
+# XXX We don't bother checking the pids for now -- until we get around
+# to writing the code to do something useful with lost connections.
+# Instead we let ssh keepalives and timeouts clean things up and it
+# may require us to issue a disconnect/reconnect in the admin interface.
 #    if ($pids) {
 #        echo "CHECKING pids:\n";
 #        $newpids = array();
@@ -200,7 +209,7 @@ function killpids() {
     global $pids;
     if ($pids) {
         foreach ($pids as $pid) {
-            echo "Killing $pid...\n";
+            if (DEBUG) { echo "Killing $pid...\n"; }
             exec("kill $pid");
             # check result?
         }

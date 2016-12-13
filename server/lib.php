@@ -29,7 +29,7 @@ function getdb() {
             registered_at INTEGER, -- timestamp
             last_seen_at  INTEGER, -- timestamp
             last_ip VARCHAR(15),
-            state VARCHAR(255), -- requested|connected|dismissed|disconnected|error
+            state VARCHAR(255), -- connecting|connected|disconnecting|disconnected|error
             offset INTEGER -- what port we starting from, when connected
         )
     ");

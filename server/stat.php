@@ -43,10 +43,10 @@ if (empty($_GET['id'])) {
 
     if (!empty($_GET['connect'])) {
         # handle ajax request for connection
-        $rv = $db->exec("UPDATE device SET state = 'requested' WHERE id = '$db_id'");
+        $rv = $db->exec("UPDATE device SET state = 'connecting' WHERE id = '$db_id'");
     } else if (!empty($_GET['disconnect'])) {
         # handle ajax request for disconnection
-        $rv = $db->exec("UPDATE device SET state = 'dismissed' WHERE id = '$db_id'");
+        $rv = $db->exec("UPDATE device SET state = 'disconnecting' WHERE id = '$db_id'");
     } else {
 
         # id specified, but not an action -- we return info on that id
@@ -75,12 +75,15 @@ function process_device($dev) {
 
     global $db;
     $stale_request_time = 60 * 5; # if it's not resolved in five minutes...
-    # detect stale connections and flag them
-    if (($dev['state'] == "requested" || $dev['state'] == "dismissed")
-            && $dev['last_seen_at'] < (time() - $stale_request_time)) {
-        $db_id = $db->escapeString($dev['id']);
-        $db->exec("UPDATE device SET state = 'disconnected' WHERE id = '$db_id'");
-        $dev['state'] = "disconnected";
+    # detect stale devices
+    if ($dev['last_seen_at'] < (time() - $stale_request_time)) {
+        $dev['is_stale'] = true;
+        # update the database concerning stale connections
+        if ($dev['state'] == "connecting" || $dev['state'] == "disconnecting") {
+            $db_id = $db->escapeString($dev['id']);
+            $db->exec("UPDATE device SET state = 'disconnected' WHERE id = '$db_id'");
+            $dev['state'] = "disconnected";
+        }
     }
     $dev['last_seen_at'] = time_ago($dev['last_seen_at']);
 

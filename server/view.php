@@ -1,15 +1,16 @@
-<?php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>esp - RACHEL</title>
+<!--
 
 # esp/server/view.php
 #
 # Displays a list of available RACHEL devices,
 # provides ability to connect/disconnect to them
 
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Remote Service - RACHEL</title>
+-->
 <style>
 
     body {
@@ -21,7 +22,7 @@
     }
     td {
         border-top: 1px solid #ccc;
-        padding: 10px 10px 0 10px;
+        padding: 10px;
     }
     a {
         color: #66c;
@@ -50,6 +51,14 @@
     .info button { float: right; }
     .info input { width: 240px; }
 
+    #msg {
+        background: #fcc;
+        color: #900;
+        font-weight: bold;
+        display: inline-block;
+        padding: 10px;
+        border-radius: 5px;
+    }
 
 </style>
 <script src=" ../jquery.2.1.4.min.js"></script>
@@ -114,10 +123,67 @@
         });
     }
 
+    var hostname = window.location.hostname;
+
+    function checkall() {
+        $.ajax({
+            url: "stat.php",
+            success: function(response) {
+                $("#msg").html("");
+                $("#msg").hide();
+                var arrayLength = response.length;
+                $("#devices").empty();
+                for (var i=0; i < arrayLength; ++i) {
+
+                    var dev = response[i];
+                    $("#devices").append(
+                        "<tr>" +
+                        "<td><a href='#' onclick=\"connect('" + dev.id + "'); return false;\">" + dev.id + "</a></td>" +
+                        "<td>" + dev.last_seen_at + "</td>" +
+                        "<td>" + dev.last_ip + "</td>" +
+                        "<td id='constat-" + dev.id + "'>" + dev.state + "</td>" +
+                        "</tr>"
+                    );
+
+                    if (dev.state == "connected") {
+                        $("#devices").append(
+                            "<tr><td colspan='4' class='info' id='info-" + dev.id + "'>" +
+                            "<label>RACHEL Index</label> <a href='//" + hostname + ":" + dev.offset +
+                            "/' target='_blank'>http://" + hostname + ":" + dev.offset +"/</a><br>" +
+                            "<label>Kiwix Library</label> <a href='//" + hostname + ":" + (dev.offset + 1) +
+                            "/' target='_blank'>http://" + hostname + ":" + (dev.offset + 1) + "/</a><br>" +
+                            "<label>KA-Lite Index</label> <a href='//" + hostname + ":" + (dev.offset + 2) +
+                            "/' target='_blank'>http://" + hostname + ":" + (dev.offset + 2) + "/</a><br>" +
+                            "<label>SSH root</label> <input value='ssh root@" + hostname +
+                            " -p " + (dev.offset + 3)  + "' onclick='this.select();'><br>" +
+                            "<button onclick=\"disconnect('" + dev.id + "')\">disconnect</button>" +
+                            "</td></tr>"
+                        );
+                    }
+                    
+                }
+
+            },
+            error: function(xhr) {
+                // we ignore errors for now, except to log them
+                console.log(xhr);
+                $("#msg").html(xhr.statusText + "\: " + xhr.responseText + ", retrying...");
+                $("#msg").show();
+            },
+            complete: function() {
+                setTimeout(checkall, 2000);
+            },
+        });
+    }
+
+    // onload
+    $(checkall);
+
 </script>
 </head>
 <body>
-<h2>Remote Service - RACHEL</h2>
+<h2>esp - RACHEL</h2>
+<div id="msg" style="display: none;"></div>
 <table>
 <tr>
     <th>Device ID</th>
@@ -125,67 +191,12 @@
     <th>Last IP</th>
     <th>Connection</th>
 </tr>
-<?php 
+<tbody id="devices">
+</tbody>
+</table>
 
-require_once("lib.php");
-$db = getdb();
 
-# get and display info on all devices
-$rv = $db->query("SELECT * FROM device");
-$tocheck = array();
-while ($row = $rv->fetchArray()) {
-
-    $constat = "--";
-    $showinfo = false;
-    if (!empty($row['state'])) {
-        $constat = $row['state'] . " (4)";
-        if ($row['state'] == "connected") {
-            $showinfo = true;
-        } else if ($row['state'] != "disconnected") {
-            array_push($tocheck, $row['id']);
-        }
-    }
-    $row['last_seen_at'] = time_ago($row['last_seen_at']);
-
-    if ($showinfo) {
-        $showinfo = "";
-    } else {
-        $showinfo = " style='display: none;'";
-    }
-
-    echo <<<____END
-        <tr>
-        <td><a href="#" onclick="connect('$row[id]'); return false;">$row[id]</a></td>
-        <td>$row[last_seen_at]</td>
-        <td>$row[last_ip]</td>
-        <td id="constat-$row[id]">$constat</td>
-        </tr>
-        <tr>
-        <td colspan="4" class="info" id="info-$row[id]"$showinfo>
-        <label>RACHEL Index</label> <a href="//$_SERVER[SERVER_NAME]:10080/" target="_blank">http://$_SERVER[SERVER_NAME]:10080/</a><br>
-        <label>Kiwix Library</label> <a href="//$_SERVER[SERVER_NAME]:10081/" target="_blank">http://$_SERVER[SERVER_NAME]:10081/</a><br>
-        <label>KA-Lite Index</label> <a href="//$_SERVER[SERVER_NAME]:18008/" target="_blank">http://$_SERVER[SERVER_NAME]:18008/</a><br>
-        <label>SSH root</label> <input value="ssh root@$_SERVER[SERVER_NAME] -p 10022" onclick="this.select();"><br>
-        <button onclick="disconnect('$row[id]')">disconnect</button>
-        </td>
-        </tr>
-____END;
     
 
-}
-echo "\n</table>\n\n";
-
-# if there are devices in "requested" mode when we get here,
-# fire off a check process for each of them...
-if ($tocheck) {
-    echo "<script>\n\$(function() {\n";
-    foreach ($tocheck as $id) {
-        echo "\tsetTimeout(\"check('$id')\", checkInterval);\n";
-    }
-    echo "});\n</script>\n";
-}
-
-
-?>
 </body>
 </html>

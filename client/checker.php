@@ -4,7 +4,7 @@
 # out with the same ID, then we won't be able to tell
 # them apart in the field, and may not be able to connect
 # to them at all if they're both online at the same time.
-$id   = "0";
+$id   = "1";
 
 # for this reason, we append the last four of the MAC address.
 $id .= "-" . exec("ifconfig | grep eth0 | awk '{ print $5 }' | sed s/://g | grep -o '.\{4\}$'");
@@ -27,19 +27,17 @@ $ports = array(
     "22"    # <- ssh
 );
 
-# we add this offset to get the new port number
-# (later we can have more than one, but for now...)
-$port_offset = 10000;
-
 $host = "dev.worldpossible.org";
 $name = "esp";
 $url  = "http://$host/$name/server.php";
 $findflag = "$name-findflag"; # for finding our procs
-$interval = 60 * 5; # default polling rate, in seconds
+
 # we use these as sensible limits for when the
 # server tells us to use a different interval
-$min_interval = 10; # ten seconds
-$max_interval = 60 * 60; # an hour
+$std_interval = 2; #60; # default polling rate, in seconds
+$min_interval = 2; #5;  # fastest allowed polling rate
+$max_interval = 60 * 60; # slowest allowed
+$interval = $std_interval;
 
 # check if there is already an ssh tunnel
 echo  "Startup check\n";
@@ -59,10 +57,16 @@ while (true) {
 
     echo "Server says: $response\n";
 
-    # The most common response is just "OK" (with no number),
-    # which requires no action at all.Everything else is handled here:
+    if ($response == "OK") {
 
-    if (preg_match("/OK (\d+)/", $response, $match)) {
+        # The most common response is just "OK" (with no number), which
+        # requires no action at all. Everything else is handled below:
+
+    } else if (preg_match("/OK (\d+)/", $response, $match)) {
+
+        # This means the server is requesting you change
+        # the polling frequency -- this allows us to tell
+        # devices to back off under load
 
         $interval = $match[1];
         if ($interval < $min_interval) {
@@ -72,23 +76,31 @@ while (true) {
         }
         echo "Polling interval set to: $interval\n";
 
-    } else if ($response == "CONNECT") {
+#    } else if ($response == "CONNECT") {
+    } else if (preg_match("/CONNECT (\d+)/", $response, $match)) {
+
+        # This requests a connection -- we use the number provided
+        # as the starting point for the new port numbers
+        $offset = $match[1];
 
         # clear out anything that's there
         killpids();
 
-        # connect each port
+        # connect each port, using sequential numbers starting at the offset
+        $i = 0;
         foreach ($ports as $rport) {
             # a bit complex - we need to
             # 1) specify the private key for login
             # 2) add a harmless string that will let us find the ssh process
             # 3) skip host checking
-            # 4) run the actual revesre tunnel on the right port
-            # 5) send all output to the dustbin so PHP can return
-            $lport = $rport + $port_offset;
+            # 4) configure some thigns so that failed connections get closed
+            # 5) run the actual revesre tunnel on the right port
+            # 6) send all output to the dustbin so PHP can return
+            $lport = $offset + $i++;
             exec(
                 "ssh -i /root/$name.sshkey -S $findflag " .
                 "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no " .
+                "-o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 " .
                 "-fN -R $lport:localhost:$rport $name@$host > /dev/null 2>&1 &",
                 $output, $retval
             );
@@ -126,10 +138,17 @@ while (true) {
             $response = file_get_contents( "$url?id=$id&error=1" );
         }
 
+        # once we're connected, we poll quickly so we can
+        # pick up disconnect messages quickly
+        $interval = $min_interval;
+
     } else if ($response == "DISCONNECT") {
 
         killpids();
         $response = file_get_contents( "$url?id=$id&disconnected=1" );
+
+	# after disconnecting, we go back to the standard polling rate
+        $interval = $std_interval;
         
     }
 
@@ -152,6 +171,7 @@ while (true) {
 #        $pids = $newpids;
 #    }
 
+    # and now we chill
     sleep($interval);
 
 }

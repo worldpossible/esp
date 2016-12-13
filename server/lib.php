@@ -19,7 +19,7 @@ function getdb() {
         $_db->busyTimeout(5000);
         @chmod($dbfile, 0666);
     } catch (Exception $ex) {
-        echo "DB ERROR 1"; exit;
+        error_exit("DB ERROR 1");
     }
 
     # just make the table if it isn't there
@@ -29,11 +29,12 @@ function getdb() {
             registered_at INTEGER, -- timestamp
             last_seen_at  INTEGER, -- timestamp
             last_ip VARCHAR(15),
-            state VARCHAR(255) -- requested|connected|dismissed|disconnected|error
+            state VARCHAR(255), -- requested|connected|dismissed|disconnected|error
+            offset INTEGER -- what port we starting from, when connected
         )
     ");
 
-    if (!$rv) { echo "DB ERROR 2"; exit; }
+    if (!$rv) { error_exit("DB ERROR 2"); }
 
     return $_db;
 
@@ -91,6 +92,12 @@ function time_ago($unix_date) {
 
     return "$difference $periods[$j] {$tense}";
 
+}
+
+function error_exit($error) {
+    header("HTTP/1.1 500 Internal Server Error");
+    echo $error;
+    exit;
 }
 
 ?>

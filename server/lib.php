@@ -100,4 +100,71 @@ function error_exit($error) {
     exit;
 }
 
+define("CKNAME", "esp-auth");
+function authorized() {
+
+    # XXX if not under https, vulnerable to cookie replay attack
+
+    $user   = "admin";
+    $pass   = "password";
+    $token  = md5("$user:$pass");
+
+    # if we've got a good cookie, return true
+    if (isset($_COOKIE[CKNAME]) && $_COOKIE[CKNAME] == $token) {
+        return true;
+
+    # if we've got good user/pass, issue cookie
+    } else if (isset($_POST['user']) && isset($_POST['pass'])) {
+
+        if ($_POST['user'] == $user && $_POST['pass'] == $pass) {
+            # we used to let the path be current directory, but then
+            # we had cookies getting set that were difficult to unset
+            # (if you don't know what directory they were set in, even
+            # unsetting at "/" doesn't work) -- so now we set and
+            # unset everything at the root
+            setcookie(CKNAME, $token, 0, "/");
+            header(
+                "Location: //$_SERVER[HTTP_HOST]"
+                . strtok($_SERVER["REQUEST_URI"],'?')
+            );
+            return true;
+        }
+
+    }
+
+    # if we made it here it means they're not authorized
+    # -- so give them a chance to log in
+
+    print <<<EOT
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Login</title>
+    <style>
+        body { background: #ccc; font-family: sans-serif; }
+    </style>
+  </head>
+  <body onload="document.getElementById('user').focus()">
+    <center>
+    <h1>esp Login</h1>
+    <form method="POST">
+    <table cellpadding="10">
+    <tr><td>User</td><td><input name="user" id="user"></td></tr>
+    <tr><td>Pass</td><td><input name="pass" type="password"></td></tr>
+    <tr><td colspan="2" align="right"><input type="submit" value="Login"></td></tr>
+    </table>
+    </center>
+    </form>
+  </body>
+</html>
+EOT;
+
+}
+
+function logout() {
+    setcookie(CKNAME, null, -1, "/");
+    header( "Location: //$_SERVER[HTTP_HOST]/" );
+}
+
 ?>

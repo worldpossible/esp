@@ -1,3 +1,7 @@
+<?php
+    require_once("lib.php");
+    if (!authorized()) { exit(); }
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,6 +62,7 @@
         display: inline-block;
         padding: 10px;
         border-radius: 5px;
+        margin-bottom: 10px;
     }
 
 </style>
@@ -105,9 +110,19 @@
     function checkall() {
         $.ajax({
             url: "stat.php",
-            success: function(response) {
+            success: function(response, status, xhr) {
+
+                // check that it's a valid response
+                if (xhr.getResponseHeader("content-type") != "application/json"
+                        || !response[0].id) {
+                    $("#msg").html("Invalid response from server, retrying... (did you log out?)");
+                    $("#msg").show();
+                    return;
+                }
+
                 $("#msg").html("");
                 $("#msg").hide();
+
                 var arrayLength = response.length;
                 $("#devices").empty();
                 for (var i=0; i < arrayLength; ++i) {
@@ -146,8 +161,6 @@
 
             },
             error: function(xhr) {
-                // we ignore errors for now, except to log them
-                console.log(xhr);
                 $("#msg").html(xhr.statusText + "\: " + xhr.responseText + ", retrying...");
                 $("#msg").show();
             },
@@ -163,6 +176,7 @@
 </script>
 </head>
 <body>
+<div style="float: right;"><a href="logout.php">logout</a></div>
 <h2>esp - RACHEL</h2>
 <div id="msg" style="display: none;"></div>
 <table>
@@ -175,9 +189,5 @@
 <tbody id="devices">
 </tbody>
 </table>
-
-
-    
-
 </body>
 </html>

@@ -14,6 +14,8 @@
 # know what device you're talking about
 
 require_once("lib.php");
+if (!authorized()) { exit(); }
+
 $db = getdb();
 $json_out = "{}";
 

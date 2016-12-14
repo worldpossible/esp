@@ -106,7 +106,7 @@ while (true) {
             # 6) send all output to the dustbin so PHP can return
             $lport = $offset + $i++;
             exec(
-                "ssh -i /root/$name.sshkey -S $findflag " .
+                "ssh -i $name.sshkey -S $findflag " .
                 "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no " .
                 "-o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 " .
                 "-fN -R $lport:localhost:$rport $name@$host > /dev/null 2>&1 &",

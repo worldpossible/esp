@@ -113,8 +113,7 @@
             success: function(response, status, xhr) {
 
                 // check that it's a valid response
-                if (xhr.getResponseHeader("content-type") != "application/json"
-                        || !response[0].id) {
+                if (xhr.getResponseHeader("content-type") != "application/json") {
                     $("#msg").html("Invalid response from server, retrying... (did you log out?)");
                     $("#msg").show();
                     return;

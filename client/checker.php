@@ -8,11 +8,22 @@
 # then manages those processes.
 #
 
-# this is the unit's unique ID. We use the last six of the eth0 mac address
-$id = exec("ifconfig | grep eth0 | awk '{ print $5 }' | sed s/://g | grep -o '.\{6\}$'");
-
 define("DEBUG", false);
 
+# some useful things to know
+$scriptpath =  dirname(__FILE__);
+$scriptname = basename(__FILE__);
+$scriptpid  = getmypid();
+
+# check we're the only one running or there will be blood
+$existing_pid = exec("ps x | grep $scriptname | grep -v $scriptpid | grep -v grep | awk '{ print $1 }'");
+if ($existing_pid) {
+    echo "$scriptname already running (pid: $existing_pid)... exiting.\n";
+    exit(1);
+}
+
+# this is the unique device ID. We use the last six of the eth0 mac address
+$id = exec("ifconfig | grep eth0 | awk '{ print $5 }' | sed s/://g | grep -o '.\{6\}$'");
 if (DEBUG) { echo  "Device ID: $id\n"; }
 
 # these are the ports we want to tunnel
@@ -36,27 +47,45 @@ $max_interval = 600; # slow rate (when offline)
 $interval = $std_interval;
 
 # check if there is already an ssh tunnel
-if (DEBUG) { echo  "Startup check...\n"; }
-$pids = getpids();
-if ($pids) {
-    if (DEBUG) { echo "Existing processes -- mark as conntected\n"; }
-    $response = @file_get_contents( "$url?id=$id&connected=1" );
-} else {
-    if (DEBUG) { echo "No existing processes -- mark as disconntected\n"; }
-    $response = @file_get_contents( "$url?id=$id&disconnected=1" );
-}
+#if (DEBUG) { echo  "Startup check...\n"; }
+#$pids = getpids();
+#if ($pids) {
+#    if (DEBUG) { echo "Existing processes -- mark as conntected\n"; }
+#    $response = @file_get_contents( "$url?id=$id&connected=1" );
+#} else {
+#    if (DEBUG) { echo "No existing processes -- mark as disconntected\n"; }
+#    $response = @file_get_contents( "$url?id=$id&disconnected=1" );
+#}
+# 
+# whoops -- restarting with dynamic ports doesn't work... so:
+killpids();
+@file_get_contents( "$url?id=$id&disconnected=1" );
 
 # enter our infinite loop
+$network_fail = false;
 while (true) {
 
     $response = @file_get_contents( "$url?id=$id" );
 
     if ($response === false) {
-        if (DEBUG) { echo "Can't contact server -- waiting $max_interval seconds.\n"; }
-        # this probably means we're not online - the most common case, really.
-        # So we take a nice long break...
-        sleep($max_interval);
+        $network_fail = true;
+        if (DEBUG) { echo "Can't contact server -- waiting $interval seconds.\n"; }
+        # This probably means we're not online - a common case, really.
+        sleep($interval);
+        # We back off our polling rate up to $max_interval. The reason we don't
+        # just jump straight to the max is because during startup network can
+        # take some time to come up, and so we want to keep trying quickly
+        # at first rather that go straight to a 10 minute timeout... but we'll get there
+        if ($interval < $max_interval) {
+            $interval += $std_interval;
+        }
         continue;
+    } else if ($network_fail == true) {
+        # when we recover from a network fail, we go back to our
+        # standard polling rate -- even if the server had given
+        # us some other rate at some point
+        $network_fail = false;
+        $interval = $std_interval;
     }
 
     if (DEBUG) { echo "Server says: $response\n"; }
@@ -106,7 +135,7 @@ while (true) {
             # 6) send all output to the dustbin so PHP can return
             $lport = $offset + $i++;
             exec(
-                "ssh -i $name.sshkey -S $findflag " .
+                "ssh -i $scriptpath/$name.sshkey -S $findflag " .
                 "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no " .
                 "-o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 " .
                 "-fN -R $lport:localhost:$rport $name@$host > /dev/null 2>&1 &",
@@ -116,8 +145,8 @@ while (true) {
                 $output = implode("\n", $output);
                 if (DEBUG) { echo "Error: ($retval) - $output\n"; }
                 $response = file_get_contents( "$url?id=$id&error=1" );
-                # XXX probably should bail here and kill off
-                # any tunnels that were successfully connected
+                killpids();
+                continue 2;
             }
         }
 
@@ -142,6 +171,7 @@ while (true) {
             $response = file_get_contents( "$url?id=$id&connected=1" );
         } else {
             if (DEBUG) { echo "Tunneling failed\n"; }
+            killpids();
             $response = file_get_contents( "$url?id=$id&error=1" );
         }
 
@@ -206,14 +236,13 @@ function getpids() {
 }
 
 function killpids() {
-    global $pids;
+    $pids = getpids();
     if ($pids) {
         foreach ($pids as $pid) {
             if (DEBUG) { echo "Killing $pid...\n"; }
             exec("kill $pid");
             # check result?
         }
-        $pids = array();
     }
 }
 

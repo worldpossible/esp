@@ -1,5 +1,7 @@
 # esp for RACHEL
 
+**This system is no longer used on RACHEL and this repository is no longer maintained**
+
 A system for providing remote service and support to RACHEL devices
 in the field.
 
